@@ -5,11 +5,7 @@ __pycache__/
 venv/
 ENV/
 
-# Fichiers volumineux
-*.pkl
-*.pickle
-embeddings.pkl
-embeddings.pickle
+
 
 # IDE
 .idea/
