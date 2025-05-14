@@ -1,0 +1,2 @@
+﻿# Ce fichier est un exemple. Vous devez remplacer ce fichier par vos véritables embeddings générés dans Colab.
+# Le fichier embeddings.pickle doit contenir un tableau numpy de dimension (nb_luminaires, dimension_embedding)

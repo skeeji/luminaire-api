@@ -1,0 +1,16 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+venv/
+ENV/
+
+# Fichiers volumineux
+*.pkl
+*.pickle
+embeddings.pkl
+embeddings.pickle
+
+# IDE
+.idea/
+.vscode/
