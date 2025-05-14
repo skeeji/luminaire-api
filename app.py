@@ -13,7 +13,7 @@ import tensorflow_hub as hub
 app = Flask(__name__)
 
 # Chemin des fichiers de données
-EMBEDDINGS_FILE = 'embeddings.pickle'
+EMBEDDINGS_FILE = 'embeddings.pkl'  # Modifié de 'embeddings.pickle' à 'embeddings.pkl'
 LUMINAIRES_FILE = 'luminaires.json'
 MODEL_URL = 'https://tfhub.dev/google/imagenet/efficientnet_v2_imagenet1k_b0/feature_vector/2'
 
