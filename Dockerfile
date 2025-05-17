@@ -21,8 +21,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copier tous les fichiers nécessaires (convert_files.py, app.py, test_compatibility.py, etc)
 COPY . .
 
-# Exécuter le script de conversion si nécessaire (tu peux supprimer cette ligne si tu préfères lancer le script à l’exécution)
-RUN python convert_files.py
 
 # Exposer le port sur lequel ton app écoute
 EXPOSE 8080
