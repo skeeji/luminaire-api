@@ -20,7 +20,7 @@ echo "Démarrage de Gunicorn:"\n\
 gunicorn --workers=1 --timeout=120 --threads=4 --worker-class=gthread wsgi:app' > /app/start.sh
 
 # Rendre le script exécutable
-RUN chmod +x /app/start.sh
+RUN chmod +x start.sh
 
 EXPOSE 8080
 
