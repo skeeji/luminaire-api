@@ -1,38 +1,39 @@
-﻿import os
+import os
 import sys
-import tensorflow as tf
-import numpy as np
-import pickle
-import json
+import time
 
-def check_file(filename):
-    if os.path.exists(filename):
-        size = os.path.getsize(filename)
-        print(f"✅ {filename} existe (taille: {size} octets)")
-    else:
-        print(f"❌ {filename} n'existe pas")
-
-def main():
-    print("=== Vérification de l'environnement Python ===")
+def check_environment():
+    """Vérifie l'environnement et imprime des informations de diagnostic"""
+    print("=== Vérification de l'environnement ===")
     print(f"Python version: {sys.version}")
-    print(f"TensorFlow version: {tf.__version__}")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Files in directory: {os.listdir('.')}")
     
-    print("\n=== Vérification des fichiers importants ===")
-    for file in ['app.py', 'wsgi.py', 'embeddings.pkl', 'luminaires.json']:
-        check_file(file)
+    # Vérifier la taille des fichiers importants
+    for file in ['embeddings.pkl', 'luminaires.json']:
+        if os.path.exists(file):
+            print(f"File {file} size: {os.path.getsize(file) / 1024 / 1024:.2f} MB")
     
-    print("\n=== Informations sur le système ===")
-    print(f"Répertoire de travail: {os.getcwd()}")
-    print(f"Contenu du répertoire:")
-    print('\n'.join(f"- {f}" for f in os.listdir('.')))
+    # Vérifier la mémoire disponible (Linux seulement)
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            for line in f:
+                if 'MemTotal' in line or 'MemAvailable' in line:
+                    print(line.strip())
+    except:
+        print("Impossible de lire les informations mémoire")
     
-    # Vérifier GPU
-    gpus = tf.config.list_physical_devices('GPU')
-    print(f"\n=== Dispositifs GPU: {len(gpus)} ===")
-    for gpu in gpus:
-        print(f"- {gpu}")
+    # Vérifier les variables d'environnement TensorFlow
+    tf_vars = {k: v for k, v in os.environ.items() if 'TF_' in k or 'CUDA_' in k}
+    print(f"TensorFlow/CUDA environment variables: {tf_vars}")
     
-    print("\n=== Test terminé ===")
+    try:
+        import tensorflow as tf
+        print(f"TensorFlow version: {tf.__version__}")
+        print(f"TensorFlow devices: {tf.config.list_physical_devices()}")
+    except Exception as e:
+        print(f"Error importing TensorFlow: {e}")
 
 if __name__ == "__main__":
-    main()
+    check_environment()
+    print("\nScript completed successfully. If your application is still failing, check the logs for specific error messages.")
