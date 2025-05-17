@@ -216,4 +216,54 @@ def health():
     return jsonify({"status": "ok"})
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False) 
+    @app.route('/health')
+def health():
+    """
+    Endpoint de santé amélioré pour Render.com
+    Vérifie que l'application est bien démarrée et que les embeddings sont chargés
+    """
+    import os
+    
+    # Vérification des fichiers de statut
+    status = "unknown"
+    if os.path.exists('/tmp/health/status'):
+        with open('/tmp/health/status', 'r') as f:
+            status = f.read().strip()
+    
+    embeddings_loaded = False
+    if os.path.exists('/tmp/health/embeddings_loaded'):
+        embeddings_loaded = True
+    
+    error = None
+    if os.path.exists('/tmp/health/error'):
+        with open('/tmp/health/error', 'r') as f:
+            error = f.read().strip()
+    
+    # Vérification de la mémoire disponible
+    mem_info = {}
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            for line in f:
+                if 'MemTotal' in line or 'MemAvailable' in line:
+                    parts = line.strip().split(':')
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip()
+                        mem_info[key] = value
+    except:
+        mem_info = {"error": "Impossible de lire les informations mémoire"}
+    
+    response = {
+        "status": "ok" if status == "ready" and embeddings_loaded else "initializing",
+        "details": {
+            "app_status": status,
+            "embeddings_loaded": embeddings_loaded,
+            "memory": mem_info
+        }
+    }
+    
+    if error:
+        response["error"] = error
+    
+    return jsonify(response)
