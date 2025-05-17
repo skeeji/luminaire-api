@@ -1,3 +1,52 @@
+# Ajoutez ce code au début de app.py, avant vos autres imports
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
+
+# Désactiver l'utilisation de GPU avec TensorFlow
+import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')
+
+# Limiter l'utilisation de la mémoire
+try:
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+except Exception as e:
+    print(f"GPU configuration error (can be ignored on CPU-only machines): {e}")
+
+# Réduire les logs de TensorFlow
+tf.get_logger().setLevel('ERROR')
+
+# Fonction pour charger les embeddings plus efficacement
+import pickle
+import numpy as np
+
+def load_embeddings():
+    try:
+        print("Chargement des embeddings...")
+        with open('embeddings.pkl', 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"Erreur de chargement des embeddings: {e}")
+        return {}
+
+# Charger les embeddings au démarrage, pas à chaque requête
+print("Initialisation de l'application...")
+embeddings = load_embeddings()
+print(f"Embeddings chargés: {len(embeddings)} items")
+
+# Continuer avec le reste de vos imports et de votre code...
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Ajoutez un endpoint de santé pour Render.com
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok"})
+
+# Le reste de votre code app.py continue ici...
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import tensorflow as tf
