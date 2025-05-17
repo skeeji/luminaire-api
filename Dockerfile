@@ -2,34 +2,30 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Installer les dépendances système
+# Installer les dépendances système nécessaires
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     python3-dev \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les requirements et installer les dépendances
-COPY requirements.txt ./
+# Copier les fichiers de requirements
+COPY requirements.txt .
+
+# Installer les dépendances Python
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copier les scripts de conversion
-COPY convert_files.py ./
-
-# Copier le reste des fichiers
+# Copier tous les fichiers nécessaires (convert_files.py, app.py, test_compatibility.py, etc)
 COPY . .
 
-# Exécuter le script de conversion si nécessaire
-RUN if [ -f embeddings.pkl ] && [ -f luminaires.json ]; then \
-        python convert_files.py; \
-        # Remplacer les fichiers originaux par les versions compatibles si la conversion a réussi
-        if [ -f embeddings_compatible.pkl ]; then mv embeddings_compatible.pkl embeddings.pkl; fi; \
-        if [ -f luminaires_compatible.json ]; then mv luminaires_compatible.json luminaires.json; fi; \
-    fi
+# Exécuter le script de conversion si nécessaire (tu peux supprimer cette ligne si tu préfères lancer le script à l’exécution)
+RUN python convert_files.py
 
-# Exposition du port
+# Exposer le port sur lequel ton app écoute
 EXPOSE 8080
 
-# Commande pour démarrer l'application
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "app:app"]
+# Commande de démarrage
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "120", "app:app"]
