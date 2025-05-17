@@ -21,6 +21,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copier tous les fichiers de l'application
 COPY . .
 
+# Après COPY . .
+RUN python check_env.py
+
 # Vérifier les fichiers présents
 RUN echo "Contenu du répertoire:" && ls -la
 
