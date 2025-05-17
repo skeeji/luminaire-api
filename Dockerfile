@@ -4,15 +4,24 @@ WORKDIR /app
 
 COPY . .
 
+# Installer les dépendances
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Créer le fichier start.sh
+RUN echo '#!/bin/bash\n\
+export PYTHONUNBUFFERED=1\n\
+export TF_FORCE_GPU_ALLOW_GROWTH=false\n\
+export CUDA_VISIBLE_DEVICES=-1\n\
+\n\
+echo "Vérification des fichiers:"\n\
+ls -la\n\
+\n\
+echo "Démarrage de Gunicorn:"\n\
+gunicorn --workers=1 --timeout=120 --threads=4 --worker-class=gthread wsgi:app' > /app/start.sh
+
+# Rendre le script exécutable
 RUN chmod +x /app/start.sh
 
 EXPOSE 8080
 
-CMD ["/app/start.sh"]
-RUN echo '#!/bin/bash\necho "Vérification des fichiers:"\nls -la\necho "Démarrage de Gunicorn:"\nexec gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 2 --timeout 120 wsgi:application' > /app/start.sh
-RUN chmod +x /app/start.sh
-
-# Utiliser le script de démarrage
 CMD ["/app/start.sh"]
