@@ -5,8 +5,18 @@ __pycache__/
 venv/
 ENV/
 
-
-
 # IDE
 .idea/
 .vscode/
+
+# Exceptions pour les fichiers de test
+!test_data/*.pkl
+!test_data/*.json
+
+# Logs
+*.log
+logs/
+
+# Environnement
+.env
+*.env
