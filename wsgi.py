@@ -1,27 +1,9 @@
-﻿import os
-import sys
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
-# Ajouter le répertoire courant au chemin de recherche Python
-sys.path.insert(0, os.path.dirname(__file__))
-
-try:
-    print("Démarrage de l'application via wsgi.py...")
-    from app import app as application
-    print("Application importée avec succès.")
-except Exception as e:
-    print(f"Erreur lors de l'import de l'application: {str(e)}")
-    
-    # Créer une application Flask minimale en cas d'échec
-    from flask import Flask, jsonify
-    application = Flask(__name__)
-    
-    @application.route('/', methods=['GET'])
-    def error_home():
-        return jsonify({
-            'status': 'error',
-            'message': 'Application en mode dégradé en raison d\'une erreur de démarrage',
-            'error': str(e)
-        }), 500
+# Import app après avoir configuré les variables d'environnement
+from app import app
 
 if __name__ == "__main__":
-    application.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
