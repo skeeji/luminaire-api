@@ -1,0 +1,20 @@
+﻿services: 
+  - type: web
+    name: luminaire-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --timeout 120 --workers 1 --threads 4
+    healthCheckPath: /health
+    healthCheckTimeout: 60
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.12
+      - key: EMBEDDINGS_FILE
+        value: embeddings.pkl
+      - key: LUMINAIRES_FILE
+        value: luminaires.json
+      - key: MALLOC_ARENA_MAX
+        value: 2
+      - key: GUNICORN_CMD_ARGS
+        value: "--timeout 120 --workers 1 --threads 4 --log-level debug"
