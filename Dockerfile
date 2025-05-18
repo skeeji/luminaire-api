@@ -1,13 +1,17 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
+# Copier les fichiers de dépendances d'abord (meilleur caching Docker)
+COPY requirements.txt .
+
+# Installer les dépendances Python
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Copier le reste du projet
 COPY . .
 
-# Installer les dépendances
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Créer le fichier start.sh
+# Créer le script de démarrage (start.sh)
 RUN echo '#!/bin/bash\n\
 export PYTHONUNBUFFERED=1\n\
 export TF_FORCE_GPU_ALLOW_GROWTH=false\n\
@@ -24,16 +28,5 @@ RUN chmod +x start.sh
 
 EXPOSE 8080
 
-CMD ["/app/start.sh"]
-FROM python:3.10-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
-
-COPY . .
-
-RUN chmod +x start.sh
-
+# Lancer l'application
 CMD ["./start.sh"]
