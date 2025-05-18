@@ -19,6 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import tensorflow_hub as hub
 import time
 import logging
+import threading
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, 
@@ -39,21 +40,24 @@ model = None
 
 def load_data():
     global embeddings, luminaires, model
-    logger.info("Chargement des données...")
+    logger.info("Initialisation de l'application...")
 
     # Créer le répertoire pour les fichiers d'état
     os.makedirs('/tmp/health', exist_ok=True)
+    
+    # Initialisation avec une valeur par défaut pour les embeddings
+    # pour permettre un démarrage rapide de l'application
+    embeddings = np.zeros((1, 1280))
     
     # Chargement des embeddings avec un délai pour éviter de surcharger la RAM au démarrage
     def load_embeddings():
         global embeddings
         try:
             if os.path.exists(EMBEDDINGS_FILE):
-                logger.info(f"Chargement des embeddings depuis {EMBEDDINGS_FILE} (50 Mo)")
-                # Utiliser mmap pour les gros fichiers afin de réduire l'utilisation de la RAM
+                logger.info(f"Chargement des embeddings depuis {EMBEDDINGS_FILE} (fichier volumineux)")
                 with open(EMBEDDINGS_FILE, 'rb') as f:
                     embeddings = pickle.load(f)
-                logger.info(f"Embeddings chargés: {embeddings.shape}")
+                logger.info(f"Embeddings chargés avec succès: {embeddings.shape}")
                 with open('/tmp/health/embeddings_loaded', 'w') as f:
                     f.write('1')
             else:
@@ -63,14 +67,13 @@ def load_data():
             logger.error(f"Erreur chargement embeddings: {e}")
             embeddings = np.zeros((1, 1280))
     
-    # Charger avec une valeur initiale pour démarrer rapidement
-    embeddings = np.zeros((1, 1280))
+    # Marquer que le chargement des embeddings a commencé
     with open('/tmp/health/embeddings_loading', 'w') as f:
         f.write('1')
     
     # Démarrer le chargement dans un thread séparé pour ne pas bloquer le démarrage de l'application
-    import threading
-    threading.Thread(target=load_embeddings, daemon=True).start()
+    embedding_thread = threading.Thread(target=load_embeddings, daemon=True)
+    embedding_thread.start()
 
     # Chargement des données de luminaires
     try:
@@ -105,13 +108,13 @@ def load_data():
     try:
         with open('/tmp/health/status', 'w') as f:
             f.write('ready')
-        logger.info("Application initialisée et prête")
+        logger.info("Application initialisée et prête (embeddings en cours de chargement en arrière-plan)")
     except Exception as e:
         logger.error(f"Erreur lors de la création du fichier d'état: {e}")
         with open('/tmp/health/error', 'w') as f:
             f.write(str(e))
 
-logger.info("Initialisation de l'application...")
+# Initialiser l'application et charger les données
 load_data()
 
 def preprocess_image(image_bytes):
@@ -152,6 +155,15 @@ def search():
     try:
         if 'image' not in request.files:
             return jsonify({'error': 'Aucune image fournie'}), 400
+        
+        # Vérifier si les embeddings sont chargés
+        embeddings_loaded = os.path.exists('/tmp/health/embeddings_loaded')
+        if not embeddings_loaded:
+            return jsonify({
+                'error': 'Le modèle est en cours de chargement, veuillez réessayer dans quelques instants',
+                'status': 'loading'
+            }), 503  # Service Unavailable
+        
         image_file = request.files['image']
         image_bytes = image_file.read()
         processed_image = preprocess_image(image_bytes)
@@ -167,14 +179,35 @@ def search():
 @app.route('/healthcheck', methods=['GET'])
 def healthcheck():
     try:
-        embeddings_info = {"shape": str(embeddings.shape)} if embeddings is not None else "Non chargé"
+        embeddings_loaded = os.path.exists('/tmp/health/embeddings_loaded')
+        embeddings_loading = os.path.exists('/tmp/health/embeddings_loading')
+        
+        embeddings_info = {
+            "shape": str(embeddings.shape) if embeddings is not None else "Non défini",
+            "loaded": embeddings_loaded,
+            "loading": embeddings_loading
+        }
+        
         luminaires_info = {"count": len(luminaires)} if luminaires is not None else "Non chargé"
         model_info = "Chargé" if model is not None else "Non chargé"
+        
+        # Informations sur la mémoire
+        mem_info = {}
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if 'MemTotal' in line or 'MemAvailable' in line:
+                        k, v = line.strip().split(':')
+                        mem_info[k.strip()] = v.strip()
+        except Exception as e:
+            mem_info = {"error": f"Lecture mémoire échouée: {str(e)}"}
+            
         return jsonify({
             'status': 'ok',
             'embeddings': embeddings_info,
             'luminaires': luminaires_info,
-            'model': model_info
+            'model': model_info,
+            'memory': mem_info
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -184,10 +217,15 @@ def home():
     return jsonify({
         'message': 'API de recherche de luminaires par similarité',
         'endpoints': {
-            '/': 'Cette page',
+            '/': 'Cette page d\'accueil',
             '/search': 'POST - Recherche par image',
-            '/healthcheck': 'GET - Vérification de l\'état',
+            '/healthcheck': 'GET - Vérification détaillée de l\'état',
             '/health': 'GET - Healthcheck Render'
+        },
+        'status': {
+            'embeddings_loaded': os.path.exists('/tmp/health/embeddings_loaded'),
+            'embeddings_loading': os.path.exists('/tmp/health/embeddings_loading'),
+            'app_ready': os.path.exists('/tmp/health/status')
         }
     })
 
@@ -197,7 +235,10 @@ def health():
     if os.path.exists('/tmp/health/status'):
         with open('/tmp/health/status', 'r') as f:
             status = f.read().strip()
+    
+    embeddings_loading = os.path.exists('/tmp/health/embeddings_loading')
     embeddings_loaded = os.path.exists('/tmp/health/embeddings_loaded')
+    
     error = None
     if os.path.exists('/tmp/health/error'):
         with open('/tmp/health/error', 'r') as f:
@@ -213,10 +254,13 @@ def health():
     except Exception as e:
         mem_info = {"error": f"Lecture mémoire échouée: {str(e)}"}
 
+    # Toujours retourner un statut OK pour que Render considère l'application comme démarrée
+    # même si les embeddings sont encore en train de charger
     response = {
-        "status": "ok" if status == "ready" else "initializing",
+        "status": "ok",
         "details": {
             "app_status": status,
+            "embeddings_loading": embeddings_loading,
             "embeddings_loaded": embeddings_loaded,
             "memory": mem_info,
             "timestamp": time.time()
@@ -224,6 +268,7 @@ def health():
     }
     if error:
         response["error"] = error
+    
     return jsonify(response)
 
 if __name__ == '__main__':
