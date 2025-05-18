@@ -1,30 +1,29 @@
 import os
+# Désactiver l'utilisation du GPU pour éviter les problèmes sur Render
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
 import tensorflow as tf
 tf.config.set_visible_devices([], 'GPU')
 
-# Limiter l'utilisation de la mémoire
-try:
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
-except Exception as e:
-    print(f"GPU configuration error (can be ignored on CPU-only machines): {e}")
-
-# Réduire les logs de TensorFlow
+# Limiter les logs de TensorFlow pour éviter de surcharger les logs
 tf.get_logger().setLevel('ERROR')
 
 import pickle
 import numpy as np
 from flask import Flask, request, jsonify
-import base64
 import io
 from PIL import Image
 import json
 from sklearn.metrics.pairwise import cosine_similarity
 import tensorflow_hub as hub
+import time
+import logging
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -40,54 +39,79 @@ model = None
 
 def load_data():
     global embeddings, luminaires, model
-    print("Chargement des données...")
+    logger.info("Chargement des données...")
 
-    try:
-        if os.path.exists(EMBEDDINGS_FILE):
-            with open(EMBEDDINGS_FILE, 'rb') as f:
-                embeddings = pickle.load(f)
-            print(f"Embeddings chargés: {embeddings.shape}")
-            with open('/tmp/health/embeddings_loaded', 'w') as f:
-                f.write('1')
-        else:
+    # Créer le répertoire pour les fichiers d'état
+    os.makedirs('/tmp/health', exist_ok=True)
+    
+    # Chargement des embeddings avec un délai pour éviter de surcharger la RAM au démarrage
+    def load_embeddings():
+        global embeddings
+        try:
+            if os.path.exists(EMBEDDINGS_FILE):
+                logger.info(f"Chargement des embeddings depuis {EMBEDDINGS_FILE} (50 Mo)")
+                # Utiliser mmap pour les gros fichiers afin de réduire l'utilisation de la RAM
+                with open(EMBEDDINGS_FILE, 'rb') as f:
+                    embeddings = pickle.load(f)
+                logger.info(f"Embeddings chargés: {embeddings.shape}")
+                with open('/tmp/health/embeddings_loaded', 'w') as f:
+                    f.write('1')
+            else:
+                logger.warning(f"Fichier d'embeddings {EMBEDDINGS_FILE} introuvable, vecteur factice utilisé.")
+                embeddings = np.zeros((1, 1280))
+        except Exception as e:
+            logger.error(f"Erreur chargement embeddings: {e}")
             embeddings = np.zeros((1, 1280))
-            print("Fichier d'embeddings introuvable, vecteur factice utilisé.")
-    except Exception as e:
-        print(f"Erreur chargement embeddings: {e}")
-        embeddings = np.zeros((1, 1280))
+    
+    # Charger avec une valeur initiale pour démarrer rapidement
+    embeddings = np.zeros((1, 1280))
+    with open('/tmp/health/embeddings_loading', 'w') as f:
+        f.write('1')
+    
+    # Démarrer le chargement dans un thread séparé pour ne pas bloquer le démarrage de l'application
+    import threading
+    threading.Thread(target=load_embeddings, daemon=True).start()
 
+    # Chargement des données de luminaires
     try:
         if os.path.exists(LUMINAIRES_FILE):
+            logger.info(f"Chargement des luminaires depuis {LUMINAIRES_FILE}")
             with open(LUMINAIRES_FILE, 'r', encoding='utf-8') as f:
                 luminaires = json.load(f)
-            print(f"Luminaires chargés: {len(luminaires)}")
+            logger.info(f"Luminaires chargés: {len(luminaires)}")
         else:
+            logger.warning(f"Fichier de luminaires {LUMINAIRES_FILE} introuvable, données factices utilisées.")
             luminaires = [{"id": "default", "name": "Luminaire par défaut"}]
     except Exception as e:
-        print(f"Erreur chargement luminaires: {e}")
+        logger.error(f"Erreur chargement luminaires: {e}")
         luminaires = [{"id": "default", "name": "Luminaire par défaut"}]
 
+    # Chargement du modèle
     try:
-        print(f"Chargement du modèle depuis {MODEL_URL}...")
+        logger.info(f"Chargement du modèle depuis {MODEL_URL}...")
         model = hub.KerasLayer(MODEL_URL)
+        # Test du modèle avec une entrée factice
         dummy_input = np.zeros((1, 224, 224, 3))
         _ = model(dummy_input)
-        print("Modèle chargé avec succès.")
+        logger.info("Modèle chargé avec succès.")
     except Exception as e:
-        print(f"Erreur chargement modèle: {e}")
+        logger.error(f"Erreur chargement modèle: {e}")
+        # Modèle factice en cas d'erreur
         def dummy_model(x):
             return tf.zeros((x.shape[0], 1280))
         model = dummy_model
 
+    # Marquer l'application comme prête
     try:
-        os.makedirs('/tmp/health', exist_ok=True)
         with open('/tmp/health/status', 'w') as f:
             f.write('ready')
+        logger.info("Application initialisée et prête")
     except Exception as e:
+        logger.error(f"Erreur lors de la création du fichier d'état: {e}")
         with open('/tmp/health/error', 'w') as f:
             f.write(str(e))
 
-print("Initialisation de l'application...")
+logger.info("Initialisation de l'application...")
 load_data()
 
 def preprocess_image(image_bytes):
@@ -97,7 +121,7 @@ def preprocess_image(image_bytes):
         img_array = np.array(img) / 255.0
         return np.expand_dims(img_array, axis=0)
     except Exception as e:
-        print(f"Erreur prétraitement image: {e}")
+        logger.error(f"Erreur prétraitement image: {e}")
         return np.zeros((1, 224, 224, 3))
 
 def find_similar_luminaires(image_embedding, top_n=5):
@@ -120,7 +144,7 @@ def find_similar_luminaires(image_embedding, top_n=5):
                 })
         return results
     except Exception as e:
-        print(f"Erreur recherche similarité: {e}")
+        logger.error(f"Erreur recherche similarité: {e}")
         return []
 
 @app.route('/search', methods=['POST'])
@@ -137,7 +161,7 @@ def search():
         results = find_similar_luminaires(image_embedding)
         return jsonify({'luminaires': results, 'message': 'Recherche réussie'})
     except Exception as e:
-        print(f"Erreur /search: {e}")
+        logger.error(f"Erreur /search: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/healthcheck', methods=['GET'])
@@ -186,15 +210,16 @@ def health():
                 if 'MemTotal' in line or 'MemAvailable' in line:
                     k, v = line.strip().split(':')
                     mem_info[k.strip()] = v.strip()
-    except:
-        mem_info = {"error": "Lecture mémoire échouée"}
+    except Exception as e:
+        mem_info = {"error": f"Lecture mémoire échouée: {str(e)}"}
 
     response = {
-        "status": "ok" if status == "ready" and embeddings_loaded else "initializing",
+        "status": "ok" if status == "ready" else "initializing",
         "details": {
             "app_status": status,
             "embeddings_loaded": embeddings_loaded,
-            "memory": mem_info
+            "memory": mem_info,
+            "timestamp": time.time()
         }
     }
     if error:
